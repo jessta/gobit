@@ -1,3 +1,10 @@
+package gotorrent
+
+import "net"
+import "os"
+import "bytes"
+import "strings"
+import "encoding/binary"
 /*It is (49+len(pstr)) bytes long.
 handshake: <pstrlen><pstr><reserved><info_hash><peer_id>
 pstrlen: string length of <pstr>, as a single raw byte
@@ -15,11 +22,12 @@ const (
 choke = iota;
 unchoke; 
 interested;
-not interested;
+uninterested;
 have;
 bitfield;
 request;
 piece;
+cancel;
 port;
 )
 
@@ -62,16 +70,13 @@ port: <len=0003><id=9><listen-port>
 The port message is sent by newer versions of the Mainline that implements a DHT tracker. The listen port is the port this peer's DHT node is listening on. This peer should be inserted in the local routing table (if DHT tracker is supported).
 */
 type handshake struct {
-	pstrlen int8;
-	pstr string;
+	pstrlen uint8;
 	reserved [8]byte;
-	info_hash [20]byte;
-	peer_id [20]byte;
 }
 
 type message struct {
-	length int32;
-	msg_id  int8;
+	length uint32;
+	msg_id  uint8;
 	payload *[]byte;
 }
 
@@ -93,98 +98,125 @@ type btpeer interface {
 	Port();
 }
 
-type client struct {
-	bool am_unchoked;
-	bool am_interested;
-	bool peer_unchoked;
-	bool peer_interested;
-	net.Conn conn;
+type Client struct {
+	am_unchoked bool;
+	am_interested bool;
+	peer_unchoked bool;
+	peer_interested bool;
+	conn *net.Conn;
+	torrent *torrent
+}
+
+type tracker struct {
+	name string;
 }
 
 type torrent struct {
-	clients []client;
 	trackers []tracker;
+	Pstr string;
+	info_hash [20]byte;
+	peer_id [20]byte;
+}
+
+/*handshake: <pstrlen><pstr><reserved><info_hash><peer_id>*/
+func (c *Client) HandShake() os.Error{
+	var pstrlen uint8 = (uint8)(len(c.torrent.Pstr));
+	msg := make([]byte,49+pstrlen);
+	msg[0] = pstrlen;
+	bytes.Copy(msg[1:pstrlen], strings.Bytes(c.torrent.Pstr));
+	bytes.Copy(msg[pstrlen+9:pstrlen+28], &(c.torrent.info_hash));
+	bytes.Copy(msg[pstrlen+29:pstrlen+48], &(c.torrent.peer_id));
+	_,err := c.conn.Write(msg);
+	return err;
 }
 
 /*piece: <len=0009+X><id=7><index><begin><block>*/
-func (client *client) Piece(int32 index, int32 begin, block []byte) os.Error{
-	var msg  [13]byte;
-	msg[0:4] = 5;
-	msg[5] = ; 
-	msg[6:9] = piece;
-	n,err := client.conn.Write(msg);
+func (c *Client) Piece(index uint32, begin uint32, block []byte) os.Error{
+	blocksize := (uint32)(len(block));
+	msg := make([]byte,9);
+	binary.LittleEndian.PutUint32(msg[0:3],blocksize+9);
+	binary.LittleEndian.PutUint32(msg[5:8],index);
+	binary.LittleEndian.PutUint32(msg[9:12],begin);
+	msg[4] = piece;
+	_,err := c.conn.Write(msg);
+	if err == nil {
+		_,err2 := c.conn.Write(block);
+		return err2
+	}
 	return err;
 
 }
 
 /*cancel: <len=0013><id=8><index><begin><length>*/
-func (client *client) Have(int32 index, int32 begin, int32 length,int32 piece) os.Error{
-	msg[0:4] = 5;
-	msg[5] = have; 
-	msg[6:9] = piece;
-	n,err := client.conn.Write(msg);
+func (c *Client) Cancel(index uint32, begin uint32, length uint32) os.Error{
+	msg := make([]byte,17);
+	binary.LittleEndian.PutUint32(msg[0:3],13);
+	msg[4] = cancel;
+	binary.LittleEndian.PutUint32(msg[5:8],index);
+	binary.LittleEndian.PutUint32(msg[9:12],begin);
+	binary.LittleEndian.PutUint32(msg[13:16],length);
+	_,err := c.conn.Write(msg);
 	return err;
 }
 
 /*port: <len=0003><id=9><listen-port>*/
-func (client *client) Have(int16 port) os.Error{
-	msg[0:4] = 5;
-	msg[5] = have; 
-	msg[6:9] = piece;
-	n,err := client.conn.Write(msg);
+func (c *Client) Port(portnum uint16) os.Error{
+	msg :=make([]byte,7);
+	binary.LittleEndian.PutUint32(msg[0:3],3);
+	msg[4] = port;
+	binary.LittleEndian.PutUint16(msg[5:6],portnum);
+	_,err := c.conn.Write(msg);
 	return err;
 }
-func (client *client) Have(int32 index) os.Error{
-	var msg [9]byte;
-	msg[0:4] = 5;
-	msg[5] = have; 
-	msg[6:9] = piece;
-	n,err := client.conn.Write(msg);
+func (c *Client) Have(index uint32) os.Error{
+	msg := make([]byte,9);
+	binary.LittleEndian.PutUint32(msg[0:3],5);
+	binary.LittleEndian.PutUint32(msg[5:8],piece);
+	msg[4] = have;
+	_,err := c.conn.Write(msg);
 	return err;
 
 }
-func (client *client) Request(int32 index,int32 begin, int32 length) os.Error{
-	var msg [17]byte;
-	msg[0:4] = 13;
-	msg[5] = request; 
-	msg[6:9] = index;
-	msg[10:13] = begin;
-	msg[14:17] = length;
-	n,err := client.conn.Write(msg);
-	return err;
-}
-
-func (client *client) Choke() os.Error{
-	return msgNoPayLoad(choke);
-}
-
-func (client *client) Unchoke() os.Error{
-	return msgNoPayLoad(unchoke);
-}
-
-func (client *client) Interested() os.Error{
-	return msgNoPayLoad(interested);
-}
-
-func (client *client) Uninterested() os.Error{
-	return msgNoPayLoad(uninterested);
-}
-
-func (client *client) Choke() os.Error{
-	return msgNoPayLoad(choke);
-}
-
-func (client *client) msgNoPayload(int8 id) os.Error{
-	var msg [5]byte;
-	msg[0:4] = 1;
-	msg[5] = id;
-	n,err := client.conn.Write(msg);
+func (c *Client) Request(index uint32, begin uint32, length uint32) os.Error{
+	msg := make([]byte,17);
+	binary.LittleEndian.PutUint32(msg[0:3],13);
+	binary.LittleEndian.PutUint32(msg[5:8],index);
+	binary.LittleEndian.PutUint32(msg[9:12],begin);
+	binary.LittleEndian.PutUint32(msg[13:16],length);
+	msg[4] = request; 
+	_,err := c.conn.Write(msg);
 	return err;
 }
 
-func (client *client) KeepAlive() os.Error{
-	var length [4]byte = 0;
-	n,err := client.conn.Write(length);
+func (c *Client) msgNoPayLoad(id uint8) os.Error{
+	msg :=make([]byte,5);
+	binary.LittleEndian.PutUint32(msg[0:3],1);
+	msg[4] = id;
+	_,err := c.conn.Write(msg);
+	return err;
+}
+
+func (c *Client) Unchoke() os.Error{
+	return c.msgNoPayLoad(unchoke);
+}
+
+func (c *Client) Interested() os.Error{
+	return c.msgNoPayLoad(interested);
+}
+
+func (c *Client) Uninterested() os.Error{
+	return c.msgNoPayLoad(uninterested);
+}
+
+func (c *Client) Choke() os.Error{
+	return c.msgNoPayLoad(choke);
+}
+
+
+func (c *Client) KeepAlive() os.Error{
+	msg := make([]byte,4);
+	binary.LittleEndian.PutUint32(msg[0:4],0);
+	_,err := c.conn.Write(msg);
 	return err;
 }
 
