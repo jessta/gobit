@@ -1,5 +1,5 @@
 package main
-/* it's all text */
+
 import "strings"
 import "strconv"
 import "bytes"
@@ -7,9 +7,6 @@ import "fmt"
 import "container/list"
 import "os"
 import "bufio"
-//import "unicode"
-//import "utf8"
-//import "encoding/binary"
 
 const (
 	bestr	= iota;
@@ -28,72 +25,82 @@ type BeNode struct {
 	Belist	*list.List;
 }
 
-func (*BeString) AppendString(toencode string) []byte {
-	str := strings.Bytes(strconv.Itoa(len(toencode)));
-	result := make([]byte, len(toencode)+len(str)+1);
-	result = bytes.Add(result, str);
-	result = bytes.AddByte(result, ':');
-	result = bytes.Add(result, strings.Bytes(toencode));
-	return result;
-}
-
-/*
-needs to be iterable
-
-*/
-/*func (*BeString) DecodeString(input []byte) BeNode {
-	return nill,nill;
-}
-
-func (*BeString) DecodeInteger(input []byte) BeNode {
-
-}*/
-
-func (this *BeNode) Encode() (output string, err os.Error){
-	return this.encode();
-}
-func (this *BeNode) encode() (output string,err os.Error){
+func (this *BeNode) Encode() (output string, err os.Error) {
 	buffer := new(bytes.Buffer);
 
 	switch this.Betype {
-		case bestr:
-			if _,err = buffer.WriteString(strconv.Itoa(len(this.Bestr)));  err != nil {return}
-			if _,err = buffer.WriteString(":"); err != nil {return};
-			if _,err = buffer.WriteString(this.Bestr); err != nil {return}
-		case beint:
-			if _,err = buffer.WriteString("i"); err != nil {return};
-			if _,err = buffer.WriteString(strconv.Itoa(this.Beint)); err != nil {return}
-			if _,err = buffer.WriteString("e"); err != nil {return};
-		case bedict:
-			if _,err = buffer.WriteString("d"); err != nil {return}; 
-			for key,item := range this.Bedict {
-				var encoded string;
-				if _,err = buffer.WriteString(strconv.Itoa(len(key))); err != nil {return}
-				if _,err = buffer.WriteString(":"); err != nil {return};
-				if _,err := buffer.WriteString(key); err != nil {return}
-				if encoded,err = item.encode(); err != nil {return}
-				if _,err = buffer.WriteString(encoded); err != nil {return}
+	case bestr:
+		if _, err = buffer.WriteString(strconv.Itoa(len(this.Bestr))); err != nil {
+			return
+		}
+		if _, err = buffer.WriteString(":"); err != nil {
+			return
+		}
+		if _, err = buffer.WriteString(this.Bestr); err != nil {
+			return
+		}
+	case beint:
+		if _, err = buffer.WriteString("i"); err != nil {
+			return
+		}
+		if _, err = buffer.WriteString(strconv.Itoa(this.Beint)); err != nil {
+			return
+		}
+		if _, err = buffer.WriteString("e"); err != nil {
+			return
+		}
+	case bedict:
+		if _, err = buffer.WriteString("d"); err != nil {
+			return
+		}
+		for key, item := range this.Bedict {
+			var encoded string;
+			if _, err = buffer.WriteString(strconv.Itoa(len(key))); err != nil {
+				return
 			}
-			if _,err = buffer.WriteString("e"); err != nil {return};
-		case belist:
+			if _, err = buffer.WriteString(":"); err != nil {
+				return
+			}
+			if _, err := buffer.WriteString(key); err != nil {
+				return
+			}
+			if encoded, err = item.Encode(); err != nil {
+				return
+			}
+			if _, err = buffer.WriteString(encoded); err != nil {
+				return
+			}
+		}
+		if _, err = buffer.WriteString("e"); err != nil {
+			return
+		}
+	case belist:
 
-			if _,err = buffer.WriteString("l"); err != nil {return};
-			for item := range this.Belist.Iter() {
-				var encoded string;
-				if encoded, err = item.(*BeNode).encode(); err != nil {return}
-				if _, err := buffer.WriteString(encoded); err != nil {return}
+		if _, err = buffer.WriteString("l"); err != nil {
+			return
+		}
+		for item := range this.Belist.Iter() {
+			var encoded string;
+			if encoded, err = item.(*BeNode).Encode(); err != nil {
+				return
 			}
-			if _,err = buffer.WriteString("e"); err != nil {return};
+			if _, err := buffer.WriteString(encoded); err != nil {
+				return
+			}
+		}
+		if _, err = buffer.WriteString("e"); err != nil {
+			return
+		}
 	}
 	output = buffer.String();
-	return
+	return;
 }
 
 
 func (this *BeString) Decode(input *bufio.Reader) (*BeNode, os.Error) {
 	c, err := input.ReadByte();
 	if err == os.EOF {
-		return nil,err;
+		return nil, err
 	}
 	if err != nil {
 		print(err.String());
@@ -108,7 +115,7 @@ func (this *BeString) Decode(input *bufio.Reader) (*BeNode, os.Error) {
 			return nil, err
 		}
 		for c != 'e' {
-			number = bytes.AddByte(number,c);
+			number = bytes.AddByte(number, c);
 			c, err = input.ReadByte();
 		}
 		node := new(BeNode);
@@ -140,14 +147,14 @@ func (this *BeString) Decode(input *bufio.Reader) (*BeNode, os.Error) {
 	case c > 47 && c < 58:	// it's a string and c is the size
 		var str []byte;
 		var strSize []byte;
-		strSize = bytes.AddByte(strSize,c);
-		c1,err := input.ReadByte();
+		strSize = bytes.AddByte(strSize, c);
+		c1, err := input.ReadByte();
 		if err != nil {
 			return nil, err
 		}
 		for c1 > 47 && c1 < 58 {
-			strSize = bytes.AddByte(strSize,c1);
-			c1,err = input.ReadByte();
+			strSize = bytes.AddByte(strSize, c1);
+			c1, err = input.ReadByte();
 			if err != nil {
 				return nil, err
 			}
@@ -157,7 +164,7 @@ func (this *BeString) Decode(input *bufio.Reader) (*BeNode, os.Error) {
 			return nil, os.NewError("strlength doesn't convert to int")
 		}
 		for i := 0; i < strLen; i++ {
-			c2,err := input.ReadByte();
+			c2, err := input.ReadByte();
 			if err != nil {
 				return nil, err
 			}
@@ -174,8 +181,8 @@ func (this *BeString) Decode(input *bufio.Reader) (*BeNode, os.Error) {
 		node.Bedict = make(map[string]*BeNode);
 		keynode, keyerr := this.Decode(input);
 		for ; keynode != nil; keynode, keyerr = this.Decode(input) {
-			if(keyerr == os.EOF){
-				return node,nil;
+			if keyerr == os.EOF {
+				return node, nil
 			}
 			if keynode.Betype == bestr {
 				//fmt.Printf("found key: %s\n",keynode.Bestr);
@@ -184,10 +191,10 @@ func (this *BeString) Decode(input *bufio.Reader) (*BeNode, os.Error) {
 					return node, nil
 				}
 				if itemerr == os.EOF {
-					return node,nil;
+					return node, nil
 				}
 				if itemnode == nil {
-					return nil,itemerr;
+					return nil, itemerr
 				}
 				//itemnode.Print();
 				node.Bedict[keynode.Bestr] = itemnode;
@@ -200,41 +207,15 @@ func (this *BeString) Decode(input *bufio.Reader) (*BeNode, os.Error) {
 		if keynode == nil && keyerr == nil {
 			//end of list
 			return node, nil
-		} 
+		}
 
 		return node, nil;
 
 	}
-	return nil, os.NewError("");;
-}
-/*
-	split := bytes.Split(todecode,":", 0);
-	length := atoi(split[0]);
-	retString := string(split[1])
-
-
-}*/
-
-/*func decode(dst []byte, src []byte)(n int,typeof int, error Error){
-	for i,dst[0] := range src {
-		switch dst[0] {
-			case 'i': // it's an integer
-		}
-	}
-}*/
-
-func (*BeString) AppendInteger(toencode int) []byte {
-	str := strconv.Itoa(toencode);
-	result := make([]byte, len(str)+2);
-	result = bytes.AddByte(result, 'i');
-	result = bytes.Add(result, strings.Bytes(str));
-	result = bytes.AddByte(result, 'e');
-	return result;
+	return nil, os.NewError("");
+	;
 }
 
-/*func EncodeList(toencode *list) []byte {
-
-}*/
 func (this *BeNode) Print() {
 	switch this.Betype {
 	case bestr:
@@ -259,6 +240,7 @@ func (this *BeNode) Print() {
 	}
 	return;
 }
+
 func main() {
 	buff := new(BeString);
 	reader := bufio.NewReader(os.Stdin);
@@ -274,7 +256,7 @@ func main() {
 	str1, err := be1.Encode();
 	//print(str1);
 	//print("\n");
-	_=str1;
+	_ = str1;
 
 	be2 := new(BeNode);
 	be2.Betype = beint;
@@ -282,7 +264,7 @@ func main() {
 	str2, err := be2.Encode();
 	//print(str2);
 	//print("\n");
-	_=str2;
+	_ = str2;
 
 	be3 := new(BeNode);
 	be3.Betype = belist;
@@ -294,19 +276,19 @@ func main() {
 	str3, err := be3.Encode();
 	//print(str3);
 	//print("\n");
-	_=str3;
+	_ = str3;
 
 	be4 := new(BeNode);
 	be4.Betype = bedict;
-	be4.Bedict = make(map[string] *BeNode);
+	be4.Bedict = make(map[string]*BeNode);
 	//be4.Bedict["chickens"] = be1;
 	//be4.Bedict["pie"] = be2;
 	//be4.Bedict["cheese"] = be3;
 	str4, err := be4.Encode();
-//	print(str4);
+	//	print(str4);
 	//print("\n");
-	str5,err := be.Encode();
-	_=err;
-	_=str4;
+	str5, err := be.Encode();
+	_ = err;
+	_ = str4;
 	print(str5);
 }
