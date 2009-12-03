@@ -1,6 +1,5 @@
-package main
+package bencode
 
-import "strings"
 import "strconv"
 import "bytes"
 import "fmt"
@@ -9,10 +8,10 @@ import "os"
 import "bufio"
 
 const (
-	bestr	= iota;
-	beint;
-	bedict;
-	belist;
+	Bestr	= iota;
+	Beint;
+	Bedict;
+	Belist;
 )
 
 type BeString []byte
@@ -29,7 +28,7 @@ func (this *BeNode) Encode() (output string, err os.Error) {
 	buffer := new(bytes.Buffer);
 
 	switch this.Betype {
-	case bestr:
+	case Bestr:
 		if _, err = buffer.WriteString(strconv.Itoa(len(this.Bestr))); err != nil {
 			return
 		}
@@ -39,7 +38,7 @@ func (this *BeNode) Encode() (output string, err os.Error) {
 		if _, err = buffer.WriteString(this.Bestr); err != nil {
 			return
 		}
-	case beint:
+	case Beint:
 		if _, err = buffer.WriteString("i"); err != nil {
 			return
 		}
@@ -49,7 +48,7 @@ func (this *BeNode) Encode() (output string, err os.Error) {
 		if _, err = buffer.WriteString("e"); err != nil {
 			return
 		}
-	case bedict:
+	case Bedict:
 		if _, err = buffer.WriteString("d"); err != nil {
 			return
 		}
@@ -74,7 +73,7 @@ func (this *BeNode) Encode() (output string, err os.Error) {
 		if _, err = buffer.WriteString("e"); err != nil {
 			return
 		}
-	case belist:
+	case Belist:
 
 		if _, err = buffer.WriteString("l"); err != nil {
 			return
@@ -119,7 +118,7 @@ func (this *BeString) Decode(input *bufio.Reader) (*BeNode, os.Error) {
 			c, err = input.ReadByte();
 		}
 		node := new(BeNode);
-		node.Betype = beint;
+		node.Betype = Beint;
 		node.Beint, err = strconv.Atoi(string(number));
 		if err != nil {
 			return nil, os.NewError("int doesn't convert to int")
@@ -128,7 +127,7 @@ func (this *BeString) Decode(input *bufio.Reader) (*BeNode, os.Error) {
 
 	case c == 'l':	//it's a list l...e
 		node := new(BeNode);
-		node.Betype = belist;
+		node.Betype = Belist;
 		node.Belist = list.New();
 		itemnode, err := this.Decode(input);
 		for ; itemnode != nil; itemnode, err = this.Decode(input) {
@@ -144,7 +143,7 @@ func (this *BeString) Decode(input *bufio.Reader) (*BeNode, os.Error) {
 	case c == 'e':	// the end of a dict or list
 		return nil, nil
 
-	case c > 47 && c < 58:	// it's a string and c is the size
+	case c >= '0' && c <= '9':	// it's a string and c is the size
 		var str []byte;
 		var strSize []byte;
 		strSize = bytes.AddByte(strSize, c);
@@ -152,7 +151,7 @@ func (this *BeString) Decode(input *bufio.Reader) (*BeNode, os.Error) {
 		if err != nil {
 			return nil, err
 		}
-		for c1 > 47 && c1 < 58 {
+		for c1 >= '0' && c1 <= '9' {
 			strSize = bytes.AddByte(strSize, c1);
 			c1, err = input.ReadByte();
 			if err != nil {
@@ -172,19 +171,19 @@ func (this *BeString) Decode(input *bufio.Reader) (*BeNode, os.Error) {
 			str = bytes.AddByte(str, c2);
 		}
 		node := new(BeNode);
-		node.Betype = bestr;
+		node.Betype = Bestr;
 		node.Bestr = string(str);
 		return node, nil;
 	case c == 'd':	//it's a dict d...e
 		node := new(BeNode);
-		node.Betype = bedict;
+		node.Betype = Bedict;
 		node.Bedict = make(map[string]*BeNode);
 		keynode, keyerr := this.Decode(input);
 		for ; keynode != nil; keynode, keyerr = this.Decode(input) {
 			if keyerr == os.EOF {
 				return node, nil
 			}
-			if keynode.Betype == bestr {
+			if keynode.Betype == Bestr {
 				//fmt.Printf("found key: %s\n",keynode.Bestr);
 				itemnode, itemerr := this.Decode(input);
 				if itemerr == nil && itemnode == nil {
@@ -218,17 +217,17 @@ func (this *BeString) Decode(input *bufio.Reader) (*BeNode, os.Error) {
 
 func (this *BeNode) Print() {
 	switch this.Betype {
-	case bestr:
+	case Bestr:
 		//print("this is string:");
 		fmt.Printf("%s\n", this.Bestr)
-	case beint:
+	case Beint:
 		fmt.Printf("%d\n", this.Beint)
-	case belist:
+	case Belist:
 		listchan := this.Belist.Iter();
 		for i := range (listchan) {
 			i.(*BeNode).Print()
 		}
-	case bedict:
+	case Bedict:
 		//print("this is a dict");
 		for i, j := range this.Bedict {
 			fmt.Printf("%s=", i);
@@ -241,7 +240,8 @@ func (this *BeNode) Print() {
 	return;
 }
 
-func main() {
+
+func test() {
 	buff := new(BeString);
 	reader := bufio.NewReader(os.Stdin);
 	be, err := buff.Decode(reader);
@@ -251,7 +251,7 @@ func main() {
 	}
 	//be.Print();
 	be1 := new(BeNode);
-	be1.Betype = bestr;
+	be1.Betype = Bestr;
 	be1.Bestr = "pizza";
 	str1, err := be1.Encode();
 	//print(str1);
@@ -259,7 +259,7 @@ func main() {
 	_ = str1;
 
 	be2 := new(BeNode);
-	be2.Betype = beint;
+	be2.Betype = Beint;
 	be2.Beint = 500;
 	str2, err := be2.Encode();
 	//print(str2);
@@ -267,7 +267,7 @@ func main() {
 	_ = str2;
 
 	be3 := new(BeNode);
-	be3.Betype = belist;
+	be3.Betype = Belist;
 	be3.Belist = new(list.List);
 
 	be3.Belist.PushBack(be1);
@@ -279,7 +279,7 @@ func main() {
 	_ = str3;
 
 	be4 := new(BeNode);
-	be4.Betype = bedict;
+	be4.Betype = Bedict;
 	be4.Bedict = make(map[string]*BeNode);
 	//be4.Bedict["chickens"] = be1;
 	//be4.Bedict["pie"] = be2;

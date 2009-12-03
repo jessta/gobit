@@ -3,7 +3,7 @@ package gotorrent
 import "net"
 import "os"
 import "bytes"
-import "strings"
+//import "strings"
 import "encoding/binary"
 /*It is (49+len(pstr)) bytes long.
 handshake: <pstrlen><pstr><reserved><info_hash><peer_id>
@@ -32,8 +32,8 @@ const (
 )
 
 const (
-	MaxRequestSize		= 2 ^ 14;
-	MaxInRequestSize	= 2 ^ 17;
+	MaxRequestSize		= (1 << 14);
+	MaxInRequestSize	= (1 << 17);
 	MaxInMsgSize		= MaxInRequestSize + 9;
 )
 /*
@@ -82,7 +82,7 @@ type handshake struct {
 type message struct {
 	length	uint32;
 	msgId	uint8;
-	payLoad	*[]byte;
+	payLoad	[]byte;
 }
 
 type bttracker interface {
@@ -104,15 +104,16 @@ type btpeer interface {
 }
 
 type Client struct {
-	amunchoked	bool;
-	aminterested	bool;
-	peerunchoked	bool;
-	peerinterested	bool;
-	netstring	string;
+	amUnchoked	bool;
+	amInterested	bool;
+	peerUnchoked	bool;
+	peerInterested	bool;
+	addr		net.Addr;
 	conn		net.Conn;
 	torrent		*torrent;
 	buffer		[MaxInMsgSize]byte;
 	bitfield	*[]byte;
+	todo		*chan message;
 }
 
 type tracker struct {
@@ -129,12 +130,15 @@ type torrent struct {
 /*handshake: <pstrlen><pstr><reserved><info_hash><peer_id>*/
 func (c *Client) HandShake() os.Error {
 	var pstrlen uint8 = (uint8)(len(c.torrent.Pstr));
+	blank := make([]byte,9);
 	msg := make([]byte, 49+pstrlen);
-	msg[0] = pstrlen;
-	bytes.Copy(msg[1:pstrlen], strings.Bytes(c.torrent.Pstr));
-	bytes.Copy(msg[pstrlen+9:pstrlen+28], &(c.torrent.info_hash));
-	bytes.Copy(msg[pstrlen+29:pstrlen+48], &(c.torrent.peer_id));
-	_, err := c.conn.Write(msg);
+	buffer := bytes.NewBuffer(msg);
+	buffer.WriteByte(pstrlen);
+	buffer.WriteString(c.torrent.Pstr);
+	buffer.Write(blank);
+	buffer.Write(&(c.torrent.info_hash));
+	buffer.Write(&(c.torrent.peer_id));
+	_, err := c.conn.Write(buffer.Bytes());
 	return err;
 }
 
@@ -142,9 +146,9 @@ func (c *Client) HandShake() os.Error {
 func (c *Client) Piece(index uint32, begin uint32, block []byte) os.Error {
 	blocksize := (uint32)(len(block));
 	msg := make([]byte, 9);
-	binary.LittleEndian.PutUint32(msg[0:3], blocksize+9);
-	binary.LittleEndian.PutUint32(msg[5:8], index);
-	binary.LittleEndian.PutUint32(msg[9:12], begin);
+	binary.BigEndian.PutUint32(msg[0:3], blocksize+9);
+	binary.BigEndian.PutUint32(msg[5:8], index);
+	binary.BigEndian.PutUint32(msg[9:12], begin);
 	msg[4] = piece;
 	_, err := c.conn.Write(msg);
 	if err == nil {
@@ -158,11 +162,11 @@ func (c *Client) Piece(index uint32, begin uint32, block []byte) os.Error {
 /*cancel: <len=0013><id=8><index><begin><length>*/
 func (c *Client) Cancel(index uint32, begin uint32, length uint32) os.Error {
 	msg := make([]byte, 17);
-	binary.LittleEndian.PutUint32(msg[0:3], 13);
+	binary.BigEndian.PutUint32(msg[0:3], 13);
 	msg[4] = cancel;
-	binary.LittleEndian.PutUint32(msg[5:8], index);
-	binary.LittleEndian.PutUint32(msg[9:12], begin);
-	binary.LittleEndian.PutUint32(msg[13:16], length);
+	binary.BigEndian.PutUint32(msg[5:8], index);
+	binary.BigEndian.PutUint32(msg[9:12], begin);
+	binary.BigEndian.PutUint32(msg[13:16], length);
 	_, err := c.conn.Write(msg);
 	return err;
 }
@@ -170,16 +174,16 @@ func (c *Client) Cancel(index uint32, begin uint32, length uint32) os.Error {
 /*port: <len=0003><id=9><listen-port>*/
 func (c *Client) Port(portnum uint16) os.Error {
 	msg := make([]byte, 7);
-	binary.LittleEndian.PutUint32(msg[0:3], 3);
+	binary.BigEndian.PutUint32(msg[0:3], 3);
 	msg[4] = port;
-	binary.LittleEndian.PutUint16(msg[5:6], portnum);
+	binary.BigEndian.PutUint16(msg[5:6], portnum);
 	_, err := c.conn.Write(msg);
 	return err;
 }
 func (c *Client) Have(index uint32) os.Error {
 	msg := make([]byte, 9);
-	binary.LittleEndian.PutUint32(msg[0:3], 5);
-	binary.LittleEndian.PutUint32(msg[5:8], piece);
+	binary.BigEndian.PutUint32(msg[0:3], 5);
+	binary.BigEndian.PutUint32(msg[5:8], piece);
 	msg[4] = have;
 	_, err := c.conn.Write(msg);
 	return err;
@@ -187,10 +191,10 @@ func (c *Client) Have(index uint32) os.Error {
 }
 func (c *Client) Request(index uint32, begin uint32, length uint32) os.Error {
 	msg := make([]byte, 17);
-	binary.LittleEndian.PutUint32(msg[0:3], 13);
-	binary.LittleEndian.PutUint32(msg[5:8], index);
-	binary.LittleEndian.PutUint32(msg[9:12], begin);
-	binary.LittleEndian.PutUint32(msg[13:16], length);
+	binary.BigEndian.PutUint32(msg[0:3], 13);
+	binary.BigEndian.PutUint32(msg[5:8], index);
+	binary.BigEndian.PutUint32(msg[9:12], begin);
+	binary.BigEndian.PutUint32(msg[13:16], length);
 	msg[4] = request;
 	_, err := c.conn.Write(msg);
 	return err;
@@ -198,7 +202,7 @@ func (c *Client) Request(index uint32, begin uint32, length uint32) os.Error {
 
 func (c *Client) msgNoPayLoad(id uint8) os.Error {
 	msg := make([]byte, 5);
-	binary.LittleEndian.PutUint32(msg[0:3], 1);
+	binary.BigEndian.PutUint32(msg[0:3], 1);
 	msg[4] = id;
 	_, err := c.conn.Write(msg);
 	return err;
@@ -214,49 +218,68 @@ func (c *Client) Choke() os.Error	{ return c.msgNoPayLoad(choke) }
 
 func (c *Client) KeepAlive() os.Error {
 	msg := make([]byte, 4);
-	binary.LittleEndian.PutUint32(msg[0:4], 0);
+	binary.BigEndian.PutUint32(msg[0:4], 0);
 	_, err := c.conn.Write(msg);
 	return err;
 }
+func (c *Client) processMsg(msg *message) (err os.Error){
+	err = nil;
+		switch msg.msgId {
+		case choke:
+			c.peerUnchoked = false
+		case unchoke:
+			c.peerUnchoked = true
+		case interested:
+			c.peerInterested = true
+		case uninterested:
+			c.peerInterested = false
+		case have:
+			err = c.processHave(msg)
+		case bitfield:
+			err = c.processBitField(msg)
+		case request:
+			err = c.processRequest(msg)
+		case piece:
+			err = c.processPiece(msg)
+		case cancel:
+			err = c.processCancel(msg)
+		case port: fallthrough; //ignore for now
+		default:
+			err = os.NewError("Recieved unknown message");
 
-func (c *Client) ProcessMsg(recvMsg message) {
-	/*read from socket*/
-
+		}
+		return
 }
-
-func (c *Client) processBitField() {
-	size := (binary.BigEndian.Uint32(c.buffer[0:3]) - 1);
+func (c *Client) processBitField(msg *message) (err os.Error) {
+	size := (binary.LittleEndian.Uint32(c.buffer[0:3]) - 1);
 	bits := make([]byte, size);
-	c.bitfield = &bits;
-	bytes.Copy(*c.bitfield, c.buffer[2:(size+1)]);
+	buffer := bytes.NewBuffer(bits);
+	buffer.Write(c.buffer[2:(size+1)]);
+	tmp := buffer.Bytes();
+	c.bitfield = &tmp;
 	return;
 }
 
-func (c *Client) processHave()	{}
-func (c *Client) processPiece() {
-	/*buffer*/
+func (c *Client) processHave(msg *message) (err os.Error)	{print("recieved have msg"); return}
+func (c *Client) processPiece(msg *message) (err os.Error){ print("recieved piece msg"); return }
+
+func (c *Client) processRequest(msg *message) (err os.Error)	{ print("recieved request msg"); return }
+
+func (c *Client) processCancel(msg *message) (err os.Error)	{print("recieved cancel msg"); return}
+
+func NewClient(addr net.Addr) (c *Client){
+	c = new(Client);
+	c.addr = addr;
+	return c
 }
 
-func (c *Client) processRequest()	{ print("recieved request") }
-
-func (c *Client) processCancel()	{}
-
-func (c *Client) Init(netstring string){
-	c.netstring = netstring;
-	return;
-}
-func (c *Client) Run() {
-	var err os.Error;
-	c.conn,err = net.Dial("tcp", "", c.netstring);
-	if err != nil { return;}
-	/*read from socket*/
-
+func (c *Client) run(){
 	for {
-		_, err = c.conn.Read(c.buffer[0:3]);	//read msg length
-		if err == nil {
+		_, err := c.conn.Read(c.buffer[0:3]);	//read msg length
+		if err != nil {
 			return
 		}
-		length := binary.BigEndian.Uint32(c.buffer[0:3]);
+		length := binary.LittleEndian.Uint32(c.buffer[0:3]);
 		switch {
 		case length == 0:
 			//keep alive
@@ -266,34 +289,35 @@ func (c *Client) Run() {
 			//too big
 			return
 		}
-
-		_, err = c.conn.Read(c.buffer[4:cap(c.buffer)]);
+		_, err = c.conn.Read(c.buffer[4:length-1]);
 		if err != nil {
 			return
 		}
-		id := c.buffer[4];
-		switch id {
-		case choke:
-			c.peerunchoked = false
-		case unchoke:
-			c.peerunchoked = true
-		case interested:
-			c.peerinterested = true
-		case uninterested:
-			c.peerinterested = false
-		case have:
-			c.processHave()
-		case bitfield:
-			c.processBitField()
-		case request:
-			c.processRequest()
-		case piece:
-			c.processPiece()
-		case cancel:
-			c.processCancel()
-		case port:
-			//ignore
+		msg := new(message);
+		msg.length = length;
+		msg.msgId = c.buffer[4];
+		bytes.Add(msg.payLoad, c.buffer[5:len(c.buffer)]);
+		c.processMsg(msg);
 
+	}
+
+}
+
+func (c *Client) SetConn(conn net.Conn){
+	c.conn = conn;
+}
+
+func (c *Client) Connect() (err os.Error){
+	return nil;
+}
+
+func (c *Client) Run() (err os.Error) {
+	if(c.conn == nil){
+		err = c.Connect();
+		if(err != nil){
+			return;
 		}
 	}
+	go c.run();
+	return;
 }
