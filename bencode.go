@@ -6,13 +6,110 @@ import "fmt"
 import "container/list"
 import "os"
 import "bufio"
+/*
+string: number:chars
+int: i numbers e
+dict: d string:|int|list|dict|string e
+list: l string|int|list|dicte
 
+*/
 const (
 	Bestr	= iota;
 	Beint;
 	Bedict;
 	Belist;
+	Beend;
 )
+/*
+Just a way to split them up, 
+
+*/
+
+func NextToken(input *bufio.Reader)(encoded []byte, betype int, err os.Error){
+	/* 
+		dict returns just d
+		list returns just l
+		string returns encoded string
+		int returns encoded int
+
+	*/
+	
+	c, err := input.ReadByte();
+	if err == os.EOF {
+		return nil, 0,err
+	}
+	if err != nil {
+		//print(err.String());
+		return nil, 0,err;
+	}
+
+	switch {
+	case c == 'i':	// it's an integer i..e
+		//i:= 0;
+		number := make([]byte,1,10);
+		c, err = input.ReadByte();
+		if err != nil {
+			return nil, 0,err
+		}
+		for c != 'e' {
+			number = bytes.AddByte(number, c);
+			if c, err = input.ReadByte(); err != nil {
+				return;
+			}
+		}
+		return number,Beint,nil;
+
+	case c == 'l':	//it's a list l...e
+		alist := make([]byte,1,1);
+		alist = bytes.AddByte(alist,c);
+		return alist,Belist,nil;
+
+	case c == 'e':	// the end of a dict or list
+		end := make([]byte,1,1);
+		end = bytes.AddByte(end,c);
+		return end,Beend,nil
+
+	case c >= '0' && c <= '9':	// it's a string and c is the size
+		str := make([]byte,1,10);
+		strSize := make([]byte,1,10);
+		strSize = bytes.AddByte(strSize, c);	
+		str = bytes.AddByte(str, c);
+		var c1 uint8;
+		c1, err  = input.ReadByte();
+		if err != nil {
+			return nil, 0,err
+		}
+		for c1 >= '0' && c1 <= '9' {
+			strSize = bytes.AddByte(strSize, c1);	
+			str= bytes.AddByte(str, c1);
+
+			c1, err = input.ReadByte();
+			if err != nil {
+				return nil, 0, err
+			}
+		}
+		strLen, err := strconv.Atoi(string(strSize));
+		if err != nil {
+			return nil, 0, os.NewError("strlength doesn't convert to int")
+		}
+		for i := 0; i < strLen; i++ {
+			c2, err := input.ReadByte();
+			if err != nil {
+				return nil, 0, err
+			}
+			//fmt.Printf("the c is: %s\n",string(c1));
+			str = bytes.AddByte(str, c2);
+		}
+		return str,Bestr,nil;
+
+	case c == 'd':	//it's a dict
+		dict := make( []byte,1,1);
+		dict = bytes.AddByte(dict,c);
+		return dict,Bedict,nil;
+	}
+	//shouldn't get here
+	return nil,0,os.NewError("error, shouldn't be here");
+}
 
 type BeString []byte
 
@@ -23,6 +120,17 @@ type BeNode struct {
 	Bedict	map[string]*BeNode;
 	Belist	*list.List;
 }
+
+
+/*finds the info dict and returns a hash of it*/
+	/*infohash := sha1.New();Write(strings.Bytes(str));
+	encode each item in be.Bedict["info"] and write to infohash
+	
+	be.Bedict["info_hash"] = infohash.Sum();	
+	thing := sha1.New();
+	str := "pizza";
+	thing.Write(strings.Bytes(str));*/
+
 
 func (this *BeNode) Encode() (output string, err os.Error) {
 	buffer := new(bytes.Buffer);
@@ -95,126 +203,6 @@ func (this *BeNode) Encode() (output string, err os.Error) {
 	return;
 }
 
-
-func (this *BeString) Decode(input *bufio.Reader) (*BeNode, os.Error) {
-	c, err := input.ReadByte();
-	if err == os.EOF {
-		return nil, err
-	}
-	if err != nil {
-		print(err.String());
-		return nil, err;
-	}
-	switch {
-	case c == 'i':	// it's an integer i..e
-		//i:= 0;
-		var number []byte;
-		c, err = input.ReadByte();
-		if err != nil {
-			return nil, err
-		}
-		for c != 'e' {
-			number = bytes.AddByte(number, c);
-			c, err = input.ReadByte();
-		}
-		node := new(BeNode);
-		node.Betype = Beint;
-		node.Beint, err = strconv.Atoi(string(number));
-		if err != nil {
-			return nil, os.NewError("int doesn't convert to int")
-		}
-		return node, nil;
-
-	case c == 'l':	//it's a list l...e
-		node := new(BeNode);
-		node.Betype = Belist;
-		node.Belist = list.New();
-		itemnode, err := this.Decode(input);
-		for ; itemnode != nil; itemnode, err = this.Decode(input) {
-			node.Belist.PushBack(itemnode)
-		}
-
-		if itemnode == nil && err == nil {
-			//end of list
-			return node, nil
-		} else {
-			return nil, os.NewError("error in list item")
-		}
-	case c == 'e':	// the end of a dict or list
-		return nil, nil
-
-	case c >= '0' && c <= '9':	// it's a string and c is the size
-		var str []byte;
-		var strSize []byte;
-		strSize = bytes.AddByte(strSize, c);
-		c1, err := input.ReadByte();
-		if err != nil {
-			return nil, err
-		}
-		for c1 >= '0' && c1 <= '9' {
-			strSize = bytes.AddByte(strSize, c1);
-			c1, err = input.ReadByte();
-			if err != nil {
-				return nil, err
-			}
-		}
-		strLen, err := strconv.Atoi(string(strSize));
-		if err != nil {
-			return nil, os.NewError("strlength doesn't convert to int")
-		}
-		for i := 0; i < strLen; i++ {
-			c2, err := input.ReadByte();
-			if err != nil {
-				return nil, err
-			}
-			//fmt.Printf("the c is: %s\n",string(c1));
-			str = bytes.AddByte(str, c2);
-		}
-		node := new(BeNode);
-		node.Betype = Bestr;
-		node.Bestr = string(str);
-		return node, nil;
-	case c == 'd':	//it's a dict d...e
-		node := new(BeNode);
-		node.Betype = Bedict;
-		node.Bedict = make(map[string]*BeNode);
-		keynode, keyerr := this.Decode(input);
-		for ; keynode != nil; keynode, keyerr = this.Decode(input) {
-			if keyerr == os.EOF {
-				return node, nil
-			}
-			if keynode.Betype == Bestr {
-				//fmt.Printf("found key: %s\n",keynode.Bestr);
-				itemnode, itemerr := this.Decode(input);
-				if itemerr == nil && itemnode == nil {
-					return node, nil
-				}
-				if itemerr == os.EOF {
-					return node, nil
-				}
-				if itemnode == nil {
-					return nil, itemerr
-				}
-				//itemnode.Print();
-				node.Bedict[keynode.Bestr] = itemnode;
-
-			} else {
-				return nil, os.NewError("non string key in dict")
-			}
-		}
-
-		if keynode == nil && keyerr == nil {
-			//end of list
-			return node, nil
-		}
-
-		return node, nil;
-
-	}
-	return nil, os.NewError("");
-	;
-}
-
 func (this *BeNode) Print() {
 	switch this.Betype {
 	case Bestr:
@@ -240,55 +228,3 @@ func (this *BeNode) Print() {
 	return;
 }
 
-
-func test() {
-	buff := new(BeString);
-	reader := bufio.NewReader(os.Stdin);
-	be, err := buff.Decode(reader);
-	if err != nil {
-		fmt.Printf("%s\n", err.String());
-		os.Exit(1);
-	}
-	//be.Print();
-	be1 := new(BeNode);
-	be1.Betype = Bestr;
-	be1.Bestr = "pizza";
-	str1, err := be1.Encode();
-	//print(str1);
-	//print("\n");
-	_ = str1;
-
-	be2 := new(BeNode);
-	be2.Betype = Beint;
-	be2.Beint = 500;
-	str2, err := be2.Encode();
-	//print(str2);
-	//print("\n");
-	_ = str2;
-
-	be3 := new(BeNode);
-	be3.Betype = Belist;
-	be3.Belist = new(list.List);
-
-	be3.Belist.PushBack(be1);
-	be3.Belist.PushBack(be2);
-
-	str3, err := be3.Encode();
-	//print(str3);
-	//print("\n");
-	_ = str3;
-
-	be4 := new(BeNode);
-	be4.Betype = Bedict;
-	be4.Bedict = make(map[string]*BeNode);
-	//be4.Bedict["chickens"] = be1;
-	//be4.Bedict["pie"] = be2;
-	//be4.Bedict["cheese"] = be3;
-	str4, err := be4.Encode();
-	//	print(str4);
-	//print("\n");
-	str5, err := be.Encode();
-	_ = err;
-	_ = str4;
-	print(str5);
-}

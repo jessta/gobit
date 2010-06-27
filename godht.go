@@ -14,16 +14,25 @@ RPing(tid [2]byte, nodeid [20]byte) os.Error
 RFindNode
 RGetPeers
 RAnnouncePeer
-
-
-type struct request {
-	rtid [2]byte;
-	rtype int;
-}
+sender
 
 type struct node {
-	pending map[string] *request;
+	pendingQueries map[string] [2]byte;
 	nextTID [2]byte;
 	nodeID [20]byte;
 	knownPeers
+	net.UDPConn socket;
+}
+
+
+func sender(outgoing chan []byte){
+	for {
+		msg := <-outgoing;
+		this.getNextTID
+		this.socket
+	}
+}
+
+func getNextTID(){
+	
 }

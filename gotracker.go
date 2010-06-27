@@ -1,9 +1,11 @@
 package gotracker
 import "http"
-import "bencode"
-import "strings"
+import "./bencode"
 import "fmt"
 import "os"
+import "container/list"
+import "strconv"
+import "bufio"
 
 type Tracker struct {
 	infoHash string;
@@ -13,59 +15,62 @@ type Tracker struct {
 	interval int;
 }
 
-func (t *Tracker) Init(url string, infoHash string,peerId string,string port){
+func (t *Tracker) Init(url string, infoHash string,peerId string,port string){
 	t.url = url;
 	t.infoHash = infoHash;
 	t.peerId = peerId;
 	t.port = port;
 }
 
-func (t *Tracker) Request(uploaded int, downloaded int, left int, status string) (peers List.list,err os.Error){
-	peers = nil;
+func (t *Tracker) Request(uploaded int, downloaded int, left int, status string) (peers *list.List,err os.Error){
 	err = nil;
 	url:= fmt.Sprint(t.url,
 	"?",
-	"info_hash=",http.URLEscape(t.infohash),
+	"info_hash=",http.URLEscape(t.infoHash),
 	"&peer_id=",http.URLEscape(t.peerId),
 	"&port=",http.URLEscape(t.port),
 	"&uploaded=",strconv.Itoa(uploaded),
 	"&downloaded=",strconv.Itoa(downloaded),
 	"&left=",strconv.Itoa(left),
 	"&status=",http.URLEscape(status));
-
+	println(url);
 	response,_, err := http.Get(url);
 	if err != nil { return;}
 
-	if response.StatusCode != http.StatusOk {
+	if response.StatusCode != http.StatusOK {
 		err = os.NewError("http error");
 	}
-		buf := new(bencode.BeString);
-		be,err := buf.Decode(response.Body);
-		if err != nil {
-			return;
-		}
+	buf := new(bencode.BeString);
+	resReader := bufio.NewReader(response.Body);
+	be,err := buf.Decode(resReader);
+	if err != nil {
+		return;
+	}
 		if be.Betype != bencode.Bedict {
 			err = os.NewError("unexpected response from tracker");
 			return;
 		}
-		if failure,ok:= be['failure reason']; !ok {
-			err = os.NewError(failure);
-			return;
-		}
-		if interval,ok := be['interval']; !ok {
+		if failure,ok:= be.Bedict["failure reason"]; !ok {
 			err = os.NewError("unexpected response from tracker");
 			return;
 		} else {
-			t.interval = strconv.Atoi(interval);
+			print(failure);
+			return;
 		}
-		if peers,ok := be['peers']; !ok {
+		if interval,ok := be.Bedict["interval"]; !ok {
+			err = os.NewError("unexpected response from tracker");
+			return;
+		} else {
+			t.interval,err = strconv.Atoi(interval.Bestr);
+		}
+		if _,ok := be.Bedict["peers"]; !ok {
 			err = os.NewError("unexpected response from tracker");
 			return;
 		}
-		list:=List.New();
-		for i := range be['peers']{
-			if i.Betype == bencode.BeDict {
-				list.PushFront(i.Bedict);
+		list:=list.New();
+		for i := range be.Bedict["peers"].Belist.Iter(){
+			if i.(*bencode.BeNode).Betype == bencode.Bedict {
+				list.PushFront(i.(*bencode.BeNode).Bedict);
 			} else {
 				err = os.NewError("unexpected response from tracker");
 				return;
